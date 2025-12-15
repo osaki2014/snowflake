@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>雪結晶 成長シミュレーター（六角格子CA）</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#111a33cc; --ink:#e9eeff; --muted:#aab4dd;
+    --btn:#1e2b59; --btn2:#27387a; --accent:#7dd3fc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1000px 600px at 30% 10%, #182b66 0%, var(--bg) 60%);
+       color:var(--ink); font-family:system-ui,-apple-system,"M PLUS Rounded 1c",sans-serif;}
+  header{position:sticky;top:0;z-index:5;background:linear-gradient(#0b1020ee,#0b102000);
+         padding:12px 14px 10px; backdrop-filter: blur(6px);}
+  h1{margin:0;font-size:16px;font-weight:700;letter-spacing:.02em}
+  .wrap{display:grid;grid-template-columns: 1fr; gap:10px; padding:10px 12px 16px; max-width:1100px; margin:0 auto;}
+  @media (min-width: 980px){ .wrap{grid-template-columns: 1fr 340px;} }
+  .card{background:var(--panel); border:1px solid #2a3a7a55; border-radius:14px; overflow:hidden;}
+  .stage{padding:10px;}
+  canvas{width:100%;height:auto;display:block;border-radius:12px;background:#070b16; border:1px solid #2a3a7a55;}
+  .side{padding:12px 12px 10px; display:flex; flex-direction:column; gap:10px;}
+  .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  .btn{
+    border:0; padding:10px 12px; border-radius:12px; color:var(--ink);
+    background:linear-gradient(180deg,var(--btn2),var(--btn)); cursor:pointer;
+    font-weight:700; letter-spacing:.02em;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:#0000;border:1px solid #2a3a7a88}
+  label{font-size:12px;color:var(--muted)}
+  input[type="range"]{width:100%}
+  .kv{display:grid; grid-template-columns: 1fr auto; gap:6px 10px; font-size:12px; color:var(--muted)}
+  .kv b{color:var(--ink); font-weight:700}
+  .note{font-size:12px;color:var(--muted); line-height:1.45}
+  .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#0f1a3e;border:1px solid #2a3a7a66;font-size:12px;color:var(--muted)}
+  .warn{color:#ffd88a}
+</style>
+</head>
+<body>
+<header>
+  <h1>❄️ 雪結晶 成長シミュレーター（六角格子CA / 温度プリセット）</h1>
+</header>
+
+<div class="wrap">
+  <div class="card stage">
+    <canvas id="cv" width="900" height="900" aria-label="snowflake canvas"></canvas>
+  </div>
+
+  <div class="card side">
+    <div class="row">
+      <button id="btnStart" class="btn">▶ 開始</button>
+      <button id="btnStep" class="btn ghost">＋1ステップ</button>
+      <button id="btnReset" class="btn ghost">↺ リセット</button>
+    </div>
+
+    <div class="row">
+      <span class="pill">温度プリセット</span>
+      <button class="btn ghost" data-preset="-5">−5℃</button>
+      <button class="btn ghost" data-preset="-15">−15℃</button>
+      <button class="btn ghost" data-preset="-30">−30℃</button>
+    </div>
+
+    <div>
+      <label>温度（シミュレーター内部では「ルールセット」に変換）: <b id="tempLabel">−15℃</b></label>
+      <input id="temp" type="range" min="-35" max="-2" step="1" value="-15">
+    </div>
+
+    <div>
+      <label>水蒸気量（過飽和度）: <b id="supLabel">高</b></label>
+      <input id="sup" type="range" min="0" max="100" step="1" value="70">
+    </div>
+
+    <div class="row">
+      <label style="display:flex;gap:8px;align-items:center">
+        <input id="symLock" type="checkbox" checked>
+        6回対称ロック（教育用：左右が揃いやすい）
+      </label>
+    </div>
+
+    <div class="row">
+      <label style="display:flex;gap:8px;align-items:center">
+        <input id="showVapor" type="checkbox">
+        水蒸気（背景）を表示
+      </label>
+    </div>
+
+    <div class="kv" id="kv">
+      <div>ステップ</div><b id="steps">0</b>
+      <div>氷セル数</div><b id="iceCount">0</b>
+      <div>内部パラメータ</div><b id="params">—</b>
+    </div>
+
+    <div class="note">
+      <b>狙い：</b>温度を動かすと、内部で<br>
+      ・「角が伸びやすい強さ（異方性）」<br>
+      ・「表面で並び直す度合い（表面拡散）」<br>
+      ・「くっつきやすさ（付着確率）」<br>
+      が同時に切り替わります。<br><br>
+      <span class="warn">−15℃付近：</span>角が伸びやすく、表面拡散が“中くらい”で整う → 樹枝状が綺麗になりやすい。
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============
+  六角格子（軸座標 q,r）で成長
+  - vapor[q,r] : 水蒸気量（簡易）
+  - ice[q,r]   : 氷(0/1)
+  - boundary   : 氷の隣接セル（成長候補）
+  温度→パラメータ（異方性/表面拡散/付着）にマッピング
+=========== */
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const ui = {
+  btnStart: document.getElementById('btnStart'),
+  btnStep: document.getElementById('btnStep'),
+  btnReset: document.getElementById('btnReset'),
+  temp: document.getElementById('temp'),
+  sup: document.getElementById('sup'),
+  tempLabel: document.getElementById('tempLabel'),
+  supLabel: document.getElementById('supLabel'),
+  symLock: document.getElementById('symLock'),
+  showVapor: document.getElementById('showVapor'),
+  steps: document.getElementById('steps'),
+  iceCount: document.getElementById('iceCount'),
+  params: document.getElementById('params'),
+};
+
+const W = cv.width, H = cv.height;
+
+// シミュレーション領域（半径Rの六角形領域）
+let R = 120; // 大きくすると重い（見た目も細かく）
+let running = false;
+let rafId = null;
+
+// 6方向（軸座標）
+const DIRS = [
+  [ 1, 0], [ 1,-1], [ 0,-1],
+  [-1, 0], [-1, 1], [ 0, 1]
+];
+
+// 60度回転（軸座標 q,r -> q',r'）
+// cube(x=q, z=r, y=-x-z) を用いて回転
+function rot60(q,r){
+  const x=q, z=r, y=-x-z;
+  // (x,y,z)->(-z,-x,-y)
+  const x2 = -z, y2 = -x, z2 = -y;
+  return [x2, z2];
+}
+function rotN(q,r,n){
+  let a=q,b=r;
+  for(let i=0;i<n;i++){ [a,b]=rot60(a,b); }
+  return [a,b];
+}
+
+// 六角領域判定
+function inHex(q,r){
+  const x=q, z=r, y=-x-z;
+  return Math.max(Math.abs(x),Math.abs(y),Math.abs(z)) <= R;
+}
+
+// Mapキー
+const key = (q,r)=> `${q},${r}`;
+
+// 状態
+let ice = new Map();      // key -> 1
+let vapor = new Map();    // key -> float
+let stepCount = 0;
+let iceCount = 0;
+
+// 温度→内部パラメータ（教育用の経験的マッピング）
+function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+// tC: -35..-2
+function paramsFromTemp(tC){
+  // 正規化（-35 -> 0, -2 -> 1）
+  const t = (tC - (-35)) / ( -2 - (-35) );
+
+  // “−15℃付近”を山にしたいので、ガウス風のピークを作る
+  const peak = Math.exp(-Math.pow((tC + 15)/6.5, 2)); // -15で最大
+  // 異方性（角優先）: -15で強め
+  const anis = clamp(lerp(0.35, 0.85, peak), 0.2, 0.95);
+
+  // 表面拡散: -15で“中くらい”。高温・低温で下がる感じに
+  const surf = clamp(0.18 + 0.22*peak, 0.05, 0.45);
+
+  // 付着確率: 低温ほどくっつく、ただし高すぎると荒れるので抑える
+  const stick = clamp(lerp(0.35, 0.62, 1-t) + 0.08*peak, 0.15, 0.75);
+
+  // 気相拡散（背景のならし）: 高温ほど大きい（分子が動きやすい）
+  const airDiff = clamp(lerp(0.08, 0.22, t), 0.05, 0.25);
+
+  // ノイズ（揺らぎ）: −15は少しだけ
+  const noise = clamp(0.02 + 0.05*(1-peak), 0.01, 0.10);
+
+  return {anis, surf, stick, airDiff, noise};
+}
+
+// supersat slider 0..100 -> 供給量
+function supplyFromSup(s){
+  // 0..100 -> 0.2..2.2
+  return 0.2 + 2.0*(s/100);
+}
+
+function reset(){
+  ice.clear();
+  vapor.clear();
+  stepCount = 0;
+  iceCount = 0;
+
+  // 初期：全セルに少し水蒸気
+  for(let q=-R;q<=R;q++){
+    for(let r=-R;r<=R;r++){
+      if(!inHex(q,r)) continue;
+      vapor.set(key(q,r), 1.0);
+    }
+  }
+
+  // 中央に核（氷）
+  setIce(0,0,true);
+
+  draw();
+  updateUI();
+}
+
+function getV(q,r){
+  return vapor.get(key(q,r)) ?? 0;
+}
+function setV(q,r,val){
+  vapor.set(key(q,r), val);
+}
+function isIce(q,r){
+  return ice.has(key(q,r));
+}
+function setIce(q,r,forceNoSym=false){
+  const k = key(q,r);
+  if(!ice.has(k)){
+    ice.set(k,1);
+    iceCount++;
+  }
+  // 6回対称ロック：中心まわりに回転コピー
+  if(ui.symLock.checked && !forceNoSym){
+    for(let n=1;n<6;n++){
+      const [qq,rr]=rotN(q,r,n);
+      const kk=key(qq,rr);
+      if(inHex(qq,rr) && !ice.has(kk)){
+        ice.set(kk,1);
+        iceCount++;
+      }
+    }
+  }
+}
+
+function neighbors(q,r){
+  const out=[];
+  for(const [dq,dr] of DIRS){
+    out.push([q+dq, r+dr]);
+  }
+  return out;
+}
+
+// 成長候補（境界）を集める：氷の隣で氷でないセル
+function collectBoundary(){
+  const cand = new Map(); // key -> {q,r, nIceNeighbors}
+  for(const k of ice.keys()){
+    const [q,r]=k.split(',').map(Number);
+    for(const [nq,nr] of neighbors(q,r)){
+      if(!inHex(nq,nr)) continue;
+      if(isIce(nq,nr)) continue;
+      const nk=key(nq,nr);
+      const cur = cand.get(nk);
+      if(cur) cur.nIceNeighbors++;
+      else cand.set(nk, {q:nq,r:nr,nIceNeighbors:1});
+    }
+  }
+  return [...cand.values()];
+}
+
+// “角っぽさ”評価：隣接氷セル数が少ないほど角（とがり）扱い
+function cornerScore(nIceNeighbors){
+  // 1 or 2 が角/枝先っぽ、3以上は面っぽい
+  if(nIceNeighbors<=1) return 1.0;
+  if(nIceNeighbors===2) return 0.65;
+  if(nIceNeighbors===3) return 0.35;
+  return 0.15;
+}
+
+// 1ステップ
+function step(){
+  const tC = Number(ui.temp.value);
+  const sup = Number(ui.sup.value);
+  const P = paramsFromTemp(tC);
+  const supply = supplyFromSup(sup);
+
+  // (A) 気相拡散：vapor を少し平滑化
+  //     速度 airDiff
+  const newV = new Map(vapor);
+  for(let q=-R;q<=R;q++){
+    for(let r=-R;r<=R;r++){
+      if(!inHex(q,r)) continue;
+      const k = key(q,r);
+      if(isIce(q,r)) { newV.set(k, 0); continue; } // 氷の中は水蒸気0扱い
+      let sum = getV(q,r);
+      let cnt = 1;
+      for(const [nq,nr] of neighbors(q,r)){
+        if(!inHex(nq,nr)) continue;
+        if(isIce(nq,nr)) continue;
+        sum += getV(nq,nr);
+        cnt++;
+      }
+      const avg = sum / cnt;
+      const v = getV(q,r);
+      newV.set(k, v + P.airDiff*(avg - v));
+    }
+  }
+  vapor = newV;
+
+  // (B) 供給：外から水蒸気が少し補給される（全体に追加、端ほど少し強め）
+  for(let q=-R;q<=R;q++){
+    for(let r=-R;r<=R;r++){
+      if(!inHex(q,r)) continue;
+      if(isIce(q,r)) continue;
+      const x=q, z=r, y=-x-z;
+      const dist = Math.max(Math.abs(x),Math.abs(y),Math.abs(z)) / R; // 0..1
+      const add = supply * (0.12 + 0.22*dist); // 端ほど入りやすい
+      setV(q,r, getV(q,r) + add);
+    }
+  }
+
+  // (C) 表面拡散：境界近くの vapor を少しだけ「面→角」に寄せるイメージ
+  //     ここでは、境界セルの vapor の一部を、より角スコアが高い近傍境界へ流す
+  const boundary = collectBoundary();
+  if(boundary.length>0 && P.surf>0){
+    // 境界セル集合をキー化
+    const bset = new Set(boundary.map(o=>key(o.q,o.r)));
+    // 一時蓄積
+    const delta = new Map();
+    for(const b of boundary){
+      const v = getV(b.q,b.r);
+      if(v<=0) continue;
+      // 境界近傍の境界を探す
+      let best = null, bestScore = -1;
+      for(const [nq,nr] of neighbors(b.q,b.r)){
+        const nk = key(nq,nr);
+        if(!bset.has(nk)) continue;
+        // 角優先（隣接氷数が少ないほど角）
+        // 近傍境界の情報が欲しいので簡易に再計算
+        let ni=0;
+        for(const [aq,ar] of neighbors(nq,nr)){
+          if(isIce(aq,ar)) ni++;
+        }
+        const s = cornerScore(ni);
+        if(s>bestScore){ bestScore=s; best={q:nq,r:nr,score:s}; }
+      }
+      if(!best) continue;
+      const move = v * P.surf * 0.18; // 動かす量（控えめ）
+      if(move<=0) continue;
+      const k1 = key(b.q,b.r), k2 = key(best.q,best.r);
+      delta.set(k1, (delta.get(k1)||0) - move);
+      delta.set(k2, (delta.get(k2)||0) + move);
+    }
+    for(const [k,d] of delta){
+      const [q,r]=k.split(',').map(Number);
+      setV(q,r, Math.max(0, getV(q,r) + d));
+    }
+  }
+
+  // (D) 成長（付着）：境界セルが氷化する確率
+  //     - anis: 角優先度合い
+  //     - stick: くっつきやすさ
+  //     - vapor: その場の供給量
+  const growList = [];
+  for(const b of boundary){
+    const v = getV(b.q,b.r);
+    if(v<=0) continue;
+
+    // 角っぽさ
+    const cs = cornerScore(b.nIceNeighbors);
+    // 異方性を効かせる（角ほど有利）
+    const shapeBoost = lerp(1.0, 1.0 + 2.4*P.anis, cs);
+
+    // 付着確率（vが多いほど、stickが大きいほど）
+    // 少しノイズも足す
+    const p = clamp( (1 - Math.exp(-v*0.06)) * P.stick * shapeBoost
+                    + (Math.random()-0.5)*P.noise, 0, 0.98);
+
+    if(Math.random() < p){
+      growList.push([b.q,b.r, v]);
+    }
+  }
+
+  // 氷化 & その場の水蒸気を消費
+  for(const [q,r,v] of growList){
+    setIce(q,r);
+    setV(q,r, Math.max(0, v*0.15)); // 少し残す（急激に枯れないように）
+  }
+
+  stepCount++;
+}
+
+// 描画（軸座標→画面座標）
+function axialToXY(q,r, size){
+  // pointy-top hex axial
+  const x = size * (Math.sqrt(3)*q + Math.sqrt(3)/2*r);
+  const y = size * (3/2*r);
+  return [x,y];
+}
+
+function drawHex(x,y,size){
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a = (Math.PI/180) * (60*i - 30); // pointy top
+    const px = x + size*Math.cos(a);
+    const py = y + size*Math.sin(a);
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  const size = Math.min(W,H) / (R*2.35); // hexサイズ
+  const cx = W/2, cy = H/2;
+
+  // 背景：水蒸気表示（任意）
+  if(ui.showVapor.checked){
+    // ざっくり：氷でないセルのvaporを明るさに
+    for(let q=-R;q<=R;q++){
+      for(let r=-R;r<=R;r++){
+        if(!inHex(q,r)) continue;
+        if(isIce(q,r)) continue;
+        const v = getV(q,r);
+        const t = clamp(v/25, 0, 1); // スケール
+        if(t<=0) continue;
+        const [x,y]=axialToXY(q,r,size);
+        const xx=cx+x, yy=cy+y;
+        // 透明度で表現（色は固定）
+        ctx.fillStyle = `rgba(125, 211, 252, ${0.18*t})`;
+        drawHex(xx,yy,size*0.98);
+        ctx.fill();
+      }
+    }
+  }
+
+  // 氷：白〜青白
+  ctx.fillStyle = "rgba(240, 248, 255, 0.98)";
+  for(const k of ice.keys()){
+    const [q,r]=k.split(',').map(Number);
+    const [x,y]=axialToXY(q,r,size);
+    const xx=cx+x, yy=cy+y;
+    drawHex(xx,yy,size*0.98);
+    ctx.fill();
+  }
+
+  // 輪郭を少し（見やすさ）
+  ctx.strokeStyle = "rgba(125, 211, 252, 0.25)";
+  ctx.lineWidth = 1;
+  for(const k of ice.keys()){
+    const [q,r]=k.split(',').map(Number);
+    const [x,y]=axialToXY(q,r,size);
+    const xx=cx+x, yy=cy+y;
+    drawHex(xx,yy,size*0.98);
+    ctx.stroke();
+  }
+}
+
+function updateUI(){
+  const tC = Number(ui.temp.value);
+  const sup = Number(ui.sup.value);
+  ui.tempLabel.textContent = `${tC}℃`;
+  ui.steps.textContent = String(stepCount);
+  ui.iceCount.textContent = String(iceCount);
+
+  // 水蒸気ラベル
+  ui.supLabel.textContent =
+    sup<33 ? "低" :
+    sup<67 ? "中" : "高";
+
+  const P = paramsFromTemp(tC);
+  ui.params.textContent =
+    `anis=${P.anis.toFixed(2)} / surf=${P.surf.toFixed(2)} / stick=${P.stick.toFixed(2)} / airDiff=${P.airDiff.toFixed(2)}`;
+}
+
+function loop(){
+  if(!running) return;
+  // 1フレームで複数ステップ（速度調整）
+  for(let i=0;i<3;i++) step();
+  draw();
+  updateUI();
+  rafId = requestAnimationFrame(loop);
+}
+
+ui.btnStart.addEventListener('click', ()=>{
+  running = !running;
+  ui.btnStart.textContent = running ? "⏸ 停止" : "▶ 開始";
+  if(running) loop();
+  else if(rafId) cancelAnimationFrame(rafId);
+});
+
+ui.btnStep.addEventListener('click', ()=>{
+  if(running) return;
+  step();
+  draw();
+  updateUI();
+});
+
+ui.btnReset.addEventListener('click', ()=>{
+  running = false;
+  ui.btnStart.textContent = "▶ 開始";
+  if(rafId) cancelAnimationFrame(rafId);
+  reset();
+});
+
+ui.temp.addEventListener('input', ()=>{
+  updateUI();
+});
+ui.sup.addEventListener('input', ()=>{
+  updateUI();
+});
+ui.symLock.addEventListener('change', ()=>{
+  // そのまま続行（途中から対称を切ると崩れやすい）
+});
+ui.showVapor.addEventListener('change', ()=>{
+  draw();
+});
+
+document.querySelectorAll('[data-preset]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    ui.temp.value = btn.getAttribute('data-preset');
+    updateUI();
+  });
+});
+
+// 初期化
+reset();
+</script>
+</body>
+</html>
