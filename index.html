@@ -320,17 +320,18 @@ function paramsFrom(tC, sup){
   let anis, surf, stick, airDiff, noise, vPow, csPow, maxAttach, consume;
 
   if(band==="dendrite"){
-    // ★確実に樹枝状：先端強優遇＆1step付着数を絞る
-    anis = 0.92;
-    surf = 0.06;
-    stick = 0.18;             // 面が太りにくい
-    airDiff = 0.11;           // 拡散は残す（影ができる）
-    noise = 0.10 + 0.06*sup01;
-    vPow = 1.25;              // vaporが多い所を強く選ぶ
-    csPow = 3.0;              // 先端を強烈に選ぶ（重要）
-    maxAttach = Math.round(2 + 6*sup01); // 1ステップの氷化上限（小さく）
-    consume = 0.02;           // 氷化後にvaporをかなり残す（先端が餓えにくい）
-  } else if(band==="plate"){
+  // ★ロゴ寄せ：主枝くっきり／先端を強烈に選抜／ノイズ弱め
+  anis = 0.95;
+  surf = 0.03;               // 表面拡散を弱め（枝を丸めない）
+  stick = 0.12;              // 面が太りにくい
+  airDiff = 0.10;            // 拡散影は維持
+  noise = 0.03 + 0.02*sup01; // ←大幅に減らす（荒れ防止）
+  vPow = 1.55;               // vaporが多い先端をさらに優遇
+  csPow = 4.2;               // ←先端優遇を強化（重要）
+  maxAttach = Math.round(1 + 3*sup01); // ←さらに絞る（1～4程度）
+  consume = 0.01;            // 先端が餓えにくい
+}
+ else if(band==="plate"){
     // 板/セクター：面が太る（付着数多め＆平滑化）
     anis = 0.22;
     surf = 0.24;
@@ -418,6 +419,28 @@ function cornerScore(nIceNeighbors){
 function hexDist01(q,r){
   const x=q, z=r, y=-x-z;
   return Math.max(Math.abs(x),Math.abs(y),Math.abs(z)) / R; // 0..1
+}
+// ====== ロゴ寄せ：6本スポーク方向に伸びやすくする ======
+const ARM_EXP = 6.0;       // 大きいほど“軸が細く長く”
+const ARM_STRENGTH = 2.0;  // 大きいほど“主枝優先”
+
+function armFactor(q,r){
+  // cube座標
+  const x = q, z = r, y = -x - z;
+  const d = Math.max(Math.abs(x),Math.abs(y),Math.abs(z));
+  if(d <= 1) return 1.0; // 中心付近は何でも伸びてよい
+
+  // 6方向（cube）への射影の最大値で“軸っぽさ”を測る
+  const dirs = [
+    [ 1,-1, 0],[ 1, 0,-1],[ 0, 1,-1],
+    [-1, 1, 0],[-1, 0, 1],[ 0,-1, 1],
+  ];
+  let best = 0;
+  for(const [dx,dy,dz] of dirs){
+    const dot = x*dx + y*dy + z*dz; // 軸方向に大きくなる
+    best = Math.max(best, Math.abs(dot) / d); // 0..1
+  }
+  return Math.pow(best, ARM_EXP); // 0..1（軸に近いほど1）
 }
 
 function reset(){
@@ -568,7 +591,26 @@ function step(){
     const vv = Math.pow(Math.max(0.0001, v), P.vPow);
 
     // 付着の基礎（stick）と少量ノイズ
-    let w = P.stick * vv * (0.15 + 1.85*P.anis*tip);
+// 付着の基礎（stick）
+let w = P.stick * vv * (0.12 + 2.20*P.anis*tip);
+
+// ★面（隣接氷が多い）を強く罰する：主枝が立つ
+// nIceNeighbors: 1(先端)が最強、2は弱、3以上はほぼ止める
+const nb = b.nIceNeighbors;
+const nbPenalty =
+  (nb<=1) ? 1.00 :
+  (nb===2) ? 0.35 :
+  (nb===3) ? 0.08 : 0.03;
+w *= nbPenalty;
+
+// ★6本スポーク方向の優遇（雪印っぽく）
+const af = armFactor(b.q, b.r); // 0..1
+w *= (1.0 + ARM_STRENGTH * af);
+
+// 微ランダム（※ノイズは小さく）
+w *= (0.95 + 0.10*Math.random());
+w += (Math.random()-0.5) * P.noise;
+
     w *= (0.90 + 0.30*Math.random()); // 微ランダム
     w += (Math.random()-0.5) * P.noise;
 
