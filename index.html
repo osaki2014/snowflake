@@ -3,44 +3,74 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>雪結晶 成長シミュレーター（調整済み / 六角格子CA）</title>
+<title>雪結晶 成長シミュレーター（中谷ダイアグラム風 / 条件切替プログラム）</title>
 <style>
   :root{
     --bg:#0b1020; --panel:#111a33cc; --ink:#e9eeff; --muted:#aab4dd;
     --btn:#1e2b59; --btn2:#27387a; --accent:#7dd3fc;
+    --line:#2a3a7a55;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:radial-gradient(1000px 600px at 30% 10%, #182b66 0%, var(--bg) 60%);
-       color:var(--ink); font-family:system-ui,-apple-system,"M PLUS Rounded 1c",sans-serif;}
-  header{position:sticky;top:0;z-index:5;background:linear-gradient(#0b1020ee,#0b102000);
-         padding:12px 14px 10px; backdrop-filter: blur(6px);}
-  h1{margin:0;font-size:16px;font-weight:700;letter-spacing:.02em}
-  .wrap{display:grid;grid-template-columns: 1fr; gap:10px; padding:10px 12px 16px; max-width:1100px; margin:0 auto;}
-  @media (min-width: 980px){ .wrap{grid-template-columns: 1fr 360px;} }
-  .card{background:var(--panel); border:1px solid #2a3a7a55; border-radius:14px; overflow:hidden;}
+  body{
+    margin:0;
+    background:radial-gradient(1000px 600px at 30% 10%, #182b66 0%, var(--bg) 60%);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,"M PLUS Rounded 1c",sans-serif;
+  }
+  header{
+    position:sticky;top:0;z-index:5;
+    background:linear-gradient(#0b1020ee,#0b102000);
+    padding:12px 14px 10px;
+    backdrop-filter: blur(6px);
+  }
+  h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em}
+  .wrap{display:grid;grid-template-columns: 1fr; gap:10px; padding:10px 12px 16px; max-width:1200px; margin:0 auto;}
+  @media (min-width: 980px){ .wrap{grid-template-columns: 1fr 420px;} }
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden;}
   .stage{padding:10px;}
-  canvas{width:100%;height:auto;display:block;border-radius:12px;background:#070b16; border:1px solid #2a3a7a55;}
+  canvas{width:100%;height:auto;display:block;border-radius:12px;background:#070b16; border:1px solid var(--line);}
   .side{padding:12px 12px 10px; display:flex; flex-direction:column; gap:10px;}
   .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
   .btn{
     border:0; padding:10px 12px; border-radius:12px; color:var(--ink);
-    background:linear-gradient(180deg,var(--btn2),var(--btn)); cursor:pointer;
-    font-weight:700; letter-spacing:.02em;
+    background:linear-gradient(180deg,var(--btn2),var(--btn));
+    cursor:pointer; font-weight:800; letter-spacing:.02em;
   }
   .btn:active{transform:translateY(1px)}
   .btn.ghost{background:#0000;border:1px solid #2a3a7a88}
+  .btn.small{padding:7px 10px;font-size:12px;border-radius:10px}
   label{font-size:12px;color:var(--muted)}
   input[type="range"]{width:100%}
+  input[type="number"]{width:92px; padding:7px 8px; border-radius:10px; border:1px solid #2a3a7a88; background:#0a1230; color:var(--ink);}
+  select{padding:7px 8px; border-radius:10px; border:1px solid #2a3a7a88; background:#0a1230; color:var(--ink);}
   .kv{display:grid; grid-template-columns: 1fr auto; gap:6px 10px; font-size:12px; color:var(--muted)}
-  .kv b{color:var(--ink); font-weight:700}
-  .note{font-size:12px;color:var(--muted); line-height:1.45}
+  .kv b{color:var(--ink); font-weight:800}
+  .note{font-size:12px;color:var(--muted); line-height:1.5}
   .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#0f1a3e;border:1px solid #2a3a7a66;font-size:12px;color:var(--muted)}
   .warn{color:#ffd88a}
+  .ok{color:#9ff0c5}
+  .table{
+    width:100%;
+    border-collapse: collapse;
+    font-size:12px;
+    color:var(--muted);
+    overflow:hidden;
+    border-radius:12px;
+  }
+  .table th,.table td{
+    border-bottom:1px solid #2a3a7a44;
+    padding:8px 6px;
+    vertical-align:middle;
+  }
+  .table th{color:var(--ink); text-align:left; font-weight:800;}
+  .table td b{color:var(--ink)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #2a3a7a88;background:#0a1230;color:var(--muted);font-size:11px}
+  .mono{font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;}
 </style>
 </head>
 <body>
 <header>
-  <h1>❄️ 雪結晶 成長シミュレーター（調整済み：−5板状 / −15樹枝状 / −30荒く小さい）</h1>
+  <h1>❄️ 雪結晶 成長シミュレーター（中谷ダイアグラム風 + 途中で温度/湿度を切替）</h1>
 </header>
 
 <div class="wrap">
@@ -53,22 +83,23 @@
       <button id="btnStart" class="btn">▶ 開始</button>
       <button id="btnStep" class="btn ghost">＋1ステップ</button>
       <button id="btnReset" class="btn ghost">↺ リセット</button>
+      <button id="btnSnap" class="btn ghost">📷 PNG保存</button>
     </div>
 
     <div class="row">
-      <span class="pill">温度プリセット</span>
-      <button class="btn ghost" data-preset="-5">−5℃（板状）</button>
-      <button class="btn ghost" data-preset="-15">−15℃（樹枝状）</button>
-      <button class="btn ghost" data-preset="-30">−30℃（荒い）</button>
+      <span class="pill">現在の条件</span>
+      <span class="tag">温度 <b id="tempLabel">−15℃</b></span>
+      <span class="tag">湿度 <b id="supLabel">高</b></span>
+      <span class="tag">モード <b id="modeLabel">樹枝状</b></span>
     </div>
 
     <div>
-      <label>温度: <b id="tempLabel">−15℃</b></label>
+      <label>温度（手動）</label>
       <input id="temp" type="range" min="-35" max="-2" step="1" value="-15">
     </div>
 
     <div>
-      <label>水蒸気量（過飽和度）: <b id="supLabel">高</b></label>
+      <label>湿度/過飽和度（手動）</label>
       <input id="sup" type="range" min="0" max="100" step="1" value="85">
     </div>
 
@@ -77,9 +108,6 @@
         <input id="symLock" type="checkbox">
         6回対称ロック（ONにすると六角形に寄りがち）
       </label>
-    </div>
-
-    <div class="row">
       <label style="display:flex;gap:8px;align-items:center">
         <input id="showVapor" type="checkbox">
         水蒸気（背景）を表示
@@ -89,26 +117,66 @@
     <div class="kv">
       <div>ステップ</div><b id="steps">0</b>
       <div>氷セル数</div><b id="iceCount">0</b>
-      <div>内部パラメータ</div><b id="params">—</b>
+      <div>内部パラメータ</div><b id="params" class="mono">—</b>
+    </div>
+
+    <div class="row">
+      <span class="pill">中谷ダイアグラム風プリセット</span>
+      <button class="btn ghost small" data-nakaya="plate">板状（−2/−10/−30帯）</button>
+      <button class="btn ghost small" data-nakaya="column">柱状（−5/−20帯）</button>
+      <button class="btn ghost small" data-nakaya="dendrite">樹枝状（−15帯）</button>
+    </div>
+
+    <div class="row">
+      <span class="pill">条件切替プログラム</span>
+      <label style="display:flex;gap:8px;align-items:center">
+        <input id="useProgram" type="checkbox" checked>
+        プログラムを使用（ONで途中切替）
+      </label>
+    </div>
+
+    <div class="row">
+      <button id="btnAddStage" class="btn ghost small">＋ステージ追加</button>
+      <button id="btnClearStages" class="btn ghost small">🧹 クリア</button>
+      <button id="btnFan" class="btn ghost small">🪭 扇六花モード</button>
+      <button id="btnNakayaTour" class="btn ghost small">🗺 温度帯ツアー</button>
     </div>
 
     <div class="note">
-      <b>調整点（重要）：</b><br>
-      −15℃では <span class="warn">「角優先を強く」</span> しつつ、<br>
-      <span class="warn">表面拡散を弱め＆ノイズを増やして</span> 枝分かれを作ります。<br>
-      まずは <b>−15℃＋水蒸気「高」</b> で試してください。<br>
-      （6回対称ロックはOFF推奨）
+      <b class="ok">扇六花について：</b><br>
+      途中で温度・湿度（過飽和度）が変わると、<br>
+      <span class="warn">「枝が出る→板(セクター)が太る→また枝」</span>のように成長様式が切替わり、扇形の“扇六花”っぽい形が出ます。<br>
+      下のステージ列を使うと、成長中に自動で条件が切り替わります。
+    </div>
+
+    <div style="border:1px solid #2a3a7a44;border-radius:12px;overflow:hidden">
+      <table class="table" id="stageTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>継続(steps)</th>
+            <th>温度(℃)</th>
+            <th>湿度(0-100)</th>
+            <th>狙い</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="stageBody"></tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>コツ：</b>まず <span class="warn">6回対称ロックOFF</span> で試してください。<br>
+      それでも左右が揃いすぎる場合は、湿度を上げる（分岐増）/下げる（太り増）を切替で作れます。
     </div>
   </div>
 </div>
 
 <script>
 /* ============
-  調整済み 六角格子CA
-  目標：温度で形がちゃんと変わる
-  -5℃：表面拡散強め/ノイズ少 → 板状で整う
-  -15℃：角優先強/表面拡散弱/ノイズ中 → 樹枝状
-  -30℃：動けない（拡散弱）/付着高/ノイズ高 → 小さく荒い
+  中谷ダイアグラム風 + 条件切替プログラム
+  - 形が「温度帯」で劇的に変わるように、パラメータを帯域（plate/column/dendrite）で切替
+  - さらに「プログラム」で成長途中に温度/湿度を変更可能（扇六花など）
 =========== */
 
 const cv = document.getElementById('cv');
@@ -118,31 +186,41 @@ const ui = {
   btnStart: document.getElementById('btnStart'),
   btnStep: document.getElementById('btnStep'),
   btnReset: document.getElementById('btnReset'),
+  btnSnap: document.getElementById('btnSnap'),
+
   temp: document.getElementById('temp'),
   sup: document.getElementById('sup'),
   tempLabel: document.getElementById('tempLabel'),
   supLabel: document.getElementById('supLabel'),
+  modeLabel: document.getElementById('modeLabel'),
+
   symLock: document.getElementById('symLock'),
   showVapor: document.getElementById('showVapor'),
+
   steps: document.getElementById('steps'),
   iceCount: document.getElementById('iceCount'),
   params: document.getElementById('params'),
+
+  useProgram: document.getElementById('useProgram'),
+  btnAddStage: document.getElementById('btnAddStage'),
+  btnClearStages: document.getElementById('btnClearStages'),
+  btnFan: document.getElementById('btnFan'),
+  btnNakayaTour: document.getElementById('btnNakayaTour'),
+
+  stageBody: document.getElementById('stageBody')
 };
 
 const W = cv.width, H = cv.height;
 
-// シミュレーション領域（半径Rの六角領域）
 let R = 120;
 let running = false;
 let rafId = null;
 
-// 6方向（軸座標）
 const DIRS = [
   [ 1, 0], [ 1,-1], [ 0,-1],
   [-1, 0], [-1, 1], [ 0, 1]
 ];
 
-// 60度回転（軸座標 q,r）
 function rot60(q,r){
   const x=q, z=r, y=-x-z;
   const x2 = -z, y2 = -x, z2 = -y;
@@ -153,84 +231,190 @@ function rotN(q,r,n){
   for(let i=0;i<n;i++){ [a,b]=rot60(a,b); }
   return [a,b];
 }
-
 function inHex(q,r){
   const x=q, z=r, y=-x-z;
   return Math.max(Math.abs(x),Math.abs(y),Math.abs(z)) <= R;
 }
 const key = (q,r)=> `${q},${r}`;
 
-// 状態
-let ice = new Map();   // key -> 1
-let vapor = new Map(); // key -> float
+let ice = new Map();
+let vapor = new Map();
 let stepCount = 0;
 let iceCount = 0;
 
 function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
 function lerp(a,b,t){ return a+(b-a)*t; }
 
-// 過飽和度スライダー -> 供給量（強め寄りに調整）
+// ============ プログラム（ステージ列） ============
+// stage: {steps, tC, sup, label}
+let stages = [
+  {steps: 500, tC:-15, sup:90, label:"樹枝状（枝を出す）"},
+  {steps: 350, tC:-10, sup:55, label:"板/セクター（太らせる）"},
+  {steps: 420, tC:-15, sup:85, label:"再び樹枝状（扇っぽく）"},
+];
+
+function totalProgramSteps(){
+  return stages.reduce((a,s)=>a+Math.max(0,Number(s.steps||0)),0);
+}
+
+// 現在のstepCountから有効ステージを返す（末尾は繰り返し）
+function getStageAt(step){
+  if(!ui.useProgram.checked || stages.length===0){
+    return {tC:Number(ui.temp.value), sup:Number(ui.sup.value), label:"手動"};
+  }
+  const total = totalProgramSteps();
+  if(total<=0){
+    return {tC:Number(ui.temp.value), sup:Number(ui.sup.value), label:"手動"};
+  }
+  const s = step % total;
+  let acc = 0;
+  for(const st of stages){
+    const len = Math.max(0, Number(st.steps||0));
+    if(s < acc + len){
+      return {tC:Number(st.tC), sup:Number(st.sup), label:st.label || "—"};
+    }
+    acc += len;
+  }
+  // 念のため
+  const last = stages[stages.length-1];
+  return {tC:Number(last.tC), sup:Number(last.sup), label:last.label || "—"};
+}
+
+// テーブル描画
+function renderStageTable(){
+  ui.stageBody.innerHTML = "";
+  stages.forEach((st, idx)=>{
+    const tr = document.createElement("tr");
+
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
+
+    const tdSteps = document.createElement("td");
+    const inSteps = document.createElement("input");
+    inSteps.type = "number"; inSteps.min = "0"; inSteps.step="10";
+    inSteps.value = String(st.steps);
+    inSteps.addEventListener("change", ()=>{ st.steps = Number(inSteps.value)||0; });
+    tdSteps.appendChild(inSteps);
+    tr.appendChild(tdSteps);
+
+    const tdT = document.createElement("td");
+    const inT = document.createElement("input");
+    inT.type = "number"; inT.min = "-35"; inT.max = "-2"; inT.step="1";
+    inT.value = String(st.tC);
+    inT.addEventListener("change", ()=>{ st.tC = Number(inT.value)||-15; });
+    tdT.appendChild(inT);
+    tr.appendChild(tdT);
+
+    const tdSup = document.createElement("td");
+    const inSup = document.createElement("input");
+    inSup.type = "number"; inSup.min = "0"; inSup.max = "100"; inSup.step="1";
+    inSup.value = String(st.sup);
+    inSup.addEventListener("change", ()=>{ st.sup = clamp(Number(inSup.value)||70,0,100); inSup.value = String(st.sup); });
+    tdSup.appendChild(inSup);
+    tr.appendChild(tdSup);
+
+    const tdLab = document.createElement("td");
+    const inLab = document.createElement("input");
+    inLab.type = "text";
+    inLab.value = st.label || "";
+    inLab.style.width = "160px";
+    inLab.addEventListener("change", ()=>{ st.label = inLab.value; });
+    tdLab.appendChild(inLab);
+    tr.appendChild(tdLab);
+
+    const tdDel = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.className = "btn ghost small";
+    btn.textContent = "削除";
+    btn.addEventListener("click", ()=>{
+      stages.splice(idx,1);
+      renderStageTable();
+    });
+    tdDel.appendChild(btn);
+    tr.appendChild(tdDel);
+
+    ui.stageBody.appendChild(tr);
+  });
+}
+
+// ============ 形の「温度帯」判定（中谷ダイアグラム風・簡略） ============
+// 実際の中谷ダイアグラムを厳密再現ではなく、教育用に「帯」を強調して劇的に変える
+function bandFromTemp(tC){
+  // 大雑把に：
+// -2～-8: 柱/針（column）寄り（特に -5 付近）
+// -8～-13: 板/セクター（plate）寄り（-10付近）
+// -13～-18: 樹枝状（dendrite）寄り（-15付近）
+// -18～-26: 柱/針（column）寄り（-20付近）
+// -26以下: 板（plate）寄り（-30付近）
+  if(tC >= -8) return "column";      // -2..-8
+  if(tC >= -13) return "plate";      // -8..-13
+  if(tC >= -18) return "dendrite";   // -13..-18
+  if(tC >= -26) return "column";     // -18..-26
+  return "plate";                    // -26..-35
+}
+
+// 過飽和度スライダー -> 供給量
 function supplyFromSup(s){
-  // 0..100 -> 0.10..2.80
-  return 0.10 + 2.70*(s/100);
+  // 0..100 -> 0.08..3.00
+  return 0.08 + 2.92*(s/100);
 }
 
 /*
-  温度→パラメータ（調整済み）
-  P = {
-    anis    : 角優先（大きいほど枝が走る）
-    surf    : 表面拡散（大きいほど整って板状になりやすい）
-    stick   : 付着しやすさ
-    airDiff : 気相拡散（大きいほど材料が均され、太りやすい）
-    noise   : 揺らぎ（大きいほど枝分かれ/荒れ）
-  }
+  帯域ごとに「形が変わる」パラメータを強めに切替
+  P = {anis, surf, stick, airDiff, noise, tipExp, consume}
 */
-function paramsFromTemp(tC){
-  // -15付近ピーク
-  const peak15 = Math.exp(-Math.pow((tC + 15)/6.2, 2));
-  // -5付近ピーク（板状寄り）
-  const peak5  = Math.exp(-Math.pow((tC + 5)/4.8, 2));
-  // 低温側強度（-35で1, -2で0）
+function paramsFrom(tC, sup){
+  const sup01 = clamp(sup/100,0,1);
+  const band = bandFromTemp(tC);
+
+  // 温度による「動けなさ」：低温ほど1
   const cold = clamp(((-2) - tC) / 33, 0, 1);
 
-  // 異方性：-15で最大（枝の先端が走る）
-  const anis = clamp(0.35 + 0.55*peak15, 0.25, 0.95);
+  // 帯域の基準（大胆に変える）
+  let anis, surf, stick, airDiff, noise, tipExp, consume;
 
-  // 表面拡散：-5で強め（板状）、-15は弱め（枝分かれ）、極低温はさらに弱い
-  const surf = clamp(0.05 + 0.22*peak5 + 0.06*(1-peak15)*0.35, 0.04, 0.32);
-
-  // 付着：低温ほど上がる。ただし-15は「付きすぎ」だと太るので少し抑える
-  const stick = clamp(0.28 + 0.42*cold - 0.10*peak15, 0.18, 0.78);
-
-  // 気相拡散：温かいほど大、低温ほど小（材料が局在→枝が出やすい）
-  const airDiff = clamp(0.06 + 0.18*(1-cold), 0.05, 0.24);
-
-  // ノイズ：-15でも少し確保（枝分かれを作る）、極低温は荒れやすく上げる
-  const noise = clamp(0.03 + 0.05*peak15 + 0.05*cold, 0.02, 0.14);
-
-  return {anis, surf, stick, airDiff, noise};
-}
-
-function reset(){
-  ice.clear();
-  vapor.clear();
-  stepCount = 0;
-  iceCount = 0;
-
-  // 初期：全セルに水蒸気
-  for(let q=-R;q<=R;q++){
-    for(let r=-R;r<=R;r++){
-      if(!inHex(q,r)) continue;
-      vapor.set(key(q,r), 1.0);
-    }
+  if(band === "dendrite"){
+    // 樹枝状：先端が走る / 表面拡散は抑える / ノイズはそこそこ
+    anis   = 0.78;
+    surf   = 0.07;
+    stick  = 0.35 + 0.20*(1-cold);   // 少し控えめ（太りすぎ防止）
+    airDiff= 0.08 + 0.08*(1-cold);   // 材料は局在気味
+    noise  = 0.06 + 0.06*sup01;      // 湿度高いほど分岐
+    tipExp = 1.25;                   // 先端強調
+    consume= 0.06;                   // 消費強め＝細枝寄り
+  } else if(band === "plate"){
+    // 板/セクター：面が太る / 表面拡散やや強め / ノイズ少なめ
+    anis   = 0.30;
+    surf   = 0.22;
+    stick  = 0.50;
+    airDiff= 0.16;                   // 材料が均され太りやすい
+    noise  = 0.02 + 0.02*sup01;
+    tipExp = 0.90;                   // 先端強調しない
+    consume= 0.11;                   // 残し多め＝面が育つ
+  } else { // column
+    // 柱/針：先端方向に伸びるが、枝分かれしにくいイメージ
+    anis   = 0.52;
+    surf   = 0.10;
+    stick  = 0.58;
+    airDiff= 0.10;
+    noise  = 0.03 + 0.03*sup01;
+    tipExp = 1.10;
+    consume= 0.08;
   }
 
-  // 中央核
-  setIce(0,0,true);
-  draw();
-  updateUI();
+  // 温度の補正（極低温は荒れやすい、拡散弱め、付着強め）
+  stick   = clamp(stick + 0.18*cold, 0.15, 0.85);
+  airDiff = clamp(airDiff * (1 - 0.55*cold), 0.04, 0.22);
+  noise   = clamp(noise + 0.05*cold, 0.01, 0.18);
+
+  // 湿度補正（湿度が高いほど枝分岐・成長は速い）
+  anis = clamp(anis + 0.12*(sup01-0.5), 0.15, 0.95);
+
+  return {band, anis, surf, stick, airDiff, noise, tipExp, consume};
 }
 
+// ============ 状態操作 ============
 function getV(q,r){ return vapor.get(key(q,r)) ?? 0; }
 function setV(q,r,val){ vapor.set(key(q,r), val); }
 function isIce(q,r){ return ice.has(key(q,r)); }
@@ -241,7 +425,6 @@ function setIce(q,r,forceNoSym=false){
     ice.set(k,1);
     iceCount++;
   }
-  // 6回対称ロック（ONの場合のみ）
   if(ui.symLock.checked && !forceNoSym){
     for(let n=1;n<6;n++){
       const [qq,rr]=rotN(q,r,n);
@@ -261,9 +444,8 @@ function neighbors(q,r){
   return out;
 }
 
-// 境界（氷の隣の非氷）
 function collectBoundary(){
-  const cand = new Map(); // key -> {q,r, nIceNeighbors}
+  const cand = new Map();
   for(const k of ice.keys()){
     const [q,r]=k.split(',').map(Number);
     for(const [nq,nr] of neighbors(q,r)){
@@ -278,22 +460,47 @@ function collectBoundary(){
   return [...cand.values()];
 }
 
-// 角っぽさ（先端ほど大）
 function cornerScore(nIceNeighbors){
-  if(nIceNeighbors<=1) return 1.0;   // 先端
-  if(nIceNeighbors===2) return 0.65; // 枝
-  if(nIceNeighbors===3) return 0.30; // 角が潰れてくる
-  return 0.12;                       // 面
+  if(nIceNeighbors<=1) return 1.0;
+  if(nIceNeighbors===2) return 0.65;
+  if(nIceNeighbors===3) return 0.30;
+  return 0.12;
 }
 
-// 1ステップ
+function reset(){
+  ice.clear();
+  vapor.clear();
+  stepCount = 0;
+  iceCount = 0;
+
+  for(let q=-R;q<=R;q++){
+    for(let r=-R;r<=R;r++){
+      if(!inHex(q,r)) continue;
+      vapor.set(key(q,r), 1.0);
+    }
+  }
+  setIce(0,0,true);
+  draw();
+  updateUI();
+}
+
+// ============ 1ステップ ============
 function step(){
-  const tC = Number(ui.temp.value);
-  const sup = Number(ui.sup.value);
-  const P = paramsFromTemp(tC);
+  // 現在ステージから条件を決定
+  const st = getStageAt(stepCount);
+  const tC = st.tC;
+  const sup = st.sup;
+
+  // 手動スライダーにも反映（見える化）
+  if(ui.useProgram.checked){
+    ui.temp.value = String(tC);
+    ui.sup.value = String(sup);
+  }
+
+  const P = paramsFrom(tC, sup);
   const supply = supplyFromSup(sup);
 
-  // (A) 気相拡散（vapor平滑化）
+  // (A) 気相拡散
   const newV = new Map(vapor);
   for(let q=-R;q<=R;q++){
     for(let r=-R;r<=R;r++){
@@ -307,20 +514,20 @@ function step(){
         sum += getV(nq,nr);
         cnt++;
       }
-      const avg = sum / cnt;
+      const avg = sum/cnt;
       const v = getV(q,r);
       newV.set(k, v + P.airDiff*(avg - v));
     }
   }
   vapor = newV;
 
-  // (B) 供給：端から入りやすい（枝が伸びる材料）
+  // (B) 供給（端から入りやすい）
   for(let q=-R;q<=R;q++){
     for(let r=-R;r<=R;r++){
       if(!inHex(q,r)) continue;
       if(isIce(q,r)) continue;
       const x=q, z=r, y=-x-z;
-      const dist = Math.max(Math.abs(x),Math.abs(y),Math.abs(z)) / R; // 0..1
+      const dist = Math.max(Math.abs(x),Math.abs(y),Math.abs(z)) / R;
       const add = supply * (0.10 + 0.28*dist);
       setV(q,r, getV(q,r) + add);
     }
@@ -328,7 +535,7 @@ function step(){
 
   const boundary = collectBoundary();
 
-  // (C) 表面拡散：整列しすぎると板状になるので、-15では弱めに働く（P.surfが小さくなる）
+  // (C) 表面拡散（面→角へ少し寄せる）
   if(boundary.length>0 && P.surf>0){
     const bset = new Set(boundary.map(o=>key(o.q,o.r)));
     const delta = new Map();
@@ -336,7 +543,6 @@ function step(){
       const v = getV(b.q,b.r);
       if(v<=0) continue;
 
-      // 近傍境界の中で「より先端（角）」へ少し流す
       let best = null, bestScore = -1;
       for(const [nq,nr] of neighbors(b.q,b.r)){
         const nk = key(nq,nr);
@@ -350,7 +556,7 @@ function step(){
       }
       if(!best) continue;
 
-      const move = v * P.surf * 0.22; // 調整済み（強すぎない）
+      const move = v * P.surf * 0.22;
       if(move<=0) continue;
 
       const k1 = key(b.q,b.r), k2 = key(best.q,best.r);
@@ -364,12 +570,8 @@ function step(){
   }
 
   // (D) 成長（付着）
-  // ここが樹枝状の主役：
-  //  - cornerScore が高いほど（先端ほど）成長が加速
-  //  - anis を強く効かせる
-  //  - sup（過飽和度）が高いほど分岐しやすい（ノイズも効く）
   const growList = [];
-  const sup01 = sup/100;
+  const sup01 = clamp(sup/100,0,1);
 
   for(const b of boundary){
     const v = getV(b.q,b.r);
@@ -377,23 +579,25 @@ function step(){
 
     const cs = cornerScore(b.nIceNeighbors);
 
-    // 先端加速（anis強化）
-    // 先端(cs=1)で最大倍率、面(cs低)は抑制
-    const tipBoost = 1.0 + (5.2 * P.anis) * Math.pow(cs, 1.35);
+    // 先端加速（帯域によって tipExp を変える＝劇的に変化）
+    const tipBoost = 1.0 + (6.0 * P.anis) * Math.pow(cs, P.tipExp);
 
-    // supersaturationが高いと枝分かれが出やすい（供給＋ゆらぎ）
-    const ssBoost = 0.75 + 1.25*sup01;
+    // 湿度が高いほど分岐しやすく（特に樹枝状帯）
+    const ssBoost = 0.70 + 1.35*sup01;
 
-    // 基本の付着確率：vが多いほど上がる（飽和曲線）
+    // 基本：vが多いほど上がる
     let base = (1 - Math.exp(-v*0.05)) * P.stick;
 
-    // 面は太りやすいので抑える（板状化防止）
-    base *= (0.55 + 0.45*cs);
+    // 面を太らせたい帯（plate）では cs 依存を弱め、樹枝状では cs 依存を強める
+    if(P.band === "plate"){
+      base *= (0.85 + 0.15*cs);
+    }else{
+      base *= (0.50 + 0.50*cs);
+    }
 
-    // 合成
     let p = base * tipBoost * ssBoost;
 
-    // ノイズ（-15でも確保して分岐が出る）
+    // ノイズ（分岐のタネ）
     p += (Math.random()-0.5) * P.noise * (0.6 + 0.9*sup01);
 
     p = clamp(p, 0, 0.98);
@@ -403,16 +607,16 @@ function step(){
     }
   }
 
-  // 氷化 & 消費（消費を強めると枝が細くなりやすい）
+  // 氷化 & 消費
   for(const [q,r,v] of growList){
     setIce(q,r);
-    setV(q,r, Math.max(0, v*0.08)); // 残しを少なめ＝樹枝状寄り
+    setV(q,r, Math.max(0, v*P.consume));
   }
 
   stepCount++;
 }
 
-// 描画
+// ============ 描画 ============
 function axialToXY(q,r,size){
   const x = size * (Math.sqrt(3)*q + Math.sqrt(3)/2*r);
   const y = size * (3/2*r);
@@ -431,11 +635,9 @@ function drawHex(x,y,size){
 
 function draw(){
   ctx.clearRect(0,0,W,H);
-
   const size = Math.min(W,H) / (R*2.35);
   const cx = W/2, cy = H/2;
 
-  // vapor表示
   if(ui.showVapor.checked){
     for(let q=-R;q<=R;q++){
       for(let r=-R;r<=R;r++){
@@ -452,7 +654,6 @@ function draw(){
     }
   }
 
-  // 氷
   ctx.fillStyle = "rgba(240, 248, 255, 0.98)";
   for(const k of ice.keys()){
     const [q,r]=k.split(',').map(Number);
@@ -461,7 +662,6 @@ function draw(){
     ctx.fill();
   }
 
-  // 輪郭
   ctx.strokeStyle = "rgba(125, 211, 252, 0.22)";
   ctx.lineWidth = 1;
   for(const k of ice.keys()){
@@ -475,6 +675,7 @@ function draw(){
 function updateUI(){
   const tC = Number(ui.temp.value);
   const sup = Number(ui.sup.value);
+
   ui.tempLabel.textContent = `${tC}℃`;
   ui.steps.textContent = String(stepCount);
   ui.iceCount.textContent = String(iceCount);
@@ -483,20 +684,26 @@ function updateUI(){
     sup<33 ? "低" :
     sup<67 ? "中" : "高";
 
-  const P = paramsFromTemp(tC);
+  const st = getStageAt(stepCount);
+  const P = paramsFrom(st.tC, st.sup);
+
+  ui.modeLabel.textContent =
+    (P.band==="dendrite") ? "樹枝状" :
+    (P.band==="plate") ? "板/セクター" : "柱/針";
+
   ui.params.textContent =
-    `anis=${P.anis.toFixed(2)} / surf=${P.surf.toFixed(2)} / stick=${P.stick.toFixed(2)} / airDiff=${P.airDiff.toFixed(2)} / noise=${P.noise.toFixed(2)}`;
+    `band=${P.band} anis=${P.anis.toFixed(2)} surf=${P.surf.toFixed(2)} stick=${P.stick.toFixed(2)} airDiff=${P.airDiff.toFixed(2)} noise=${P.noise.toFixed(2)} tipExp=${P.tipExp.toFixed(2)} cons=${P.consume.toFixed(2)}`;
 }
 
 function loop(){
   if(!running) return;
-  // 1フレームで複数ステップ（速すぎると見づらいので控えめ）
   for(let i=0;i<3;i++) step();
   draw();
   updateUI();
   rafId = requestAnimationFrame(loop);
 }
 
+// ============ UIイベント ============
 ui.btnStart.addEventListener('click', ()=>{
   running = !running;
   ui.btnStart.textContent = running ? "⏸ 停止" : "▶ 開始";
@@ -522,19 +729,66 @@ ui.temp.addEventListener('input', ()=> updateUI());
 ui.sup.addEventListener('input', ()=> updateUI());
 ui.showVapor.addEventListener('change', ()=> draw());
 
-document.querySelectorAll('[data-preset]').forEach(btn=>{
+ui.btnSnap.addEventListener('click', ()=>{
+  const a = document.createElement("a");
+  a.download = `snowflake_step${stepCount}.png`;
+  a.href = cv.toDataURL("image/png");
+  a.click();
+});
+
+ui.btnAddStage.addEventListener('click', ()=>{
+  stages.push({steps:300, tC:-15, sup:80, label:"追加ステージ"});
+  renderStageTable();
+});
+
+ui.btnClearStages.addEventListener('click', ()=>{
+  stages = [];
+  renderStageTable();
+});
+
+ui.btnFan.addEventListener('click', ()=>{
+  // 扇六花風：枝を出す(-15高) → セクター太らせる(-10中低) → 枝を薄く出す(-15中) → セクター太らせる(-10低)
+  // これを繰り返すことで、扇形の層が出やすい
+  stages = [
+    {steps: 420, tC:-15, sup:92, label:"樹枝状：枝を出す"},
+    {steps: 260, tC:-10, sup:52, label:"板/セクター：太らせる"},
+    {steps: 260, tC:-15, sup:78, label:"樹枝状：薄く枝"},
+    {steps: 220, tC:-10, sup:45, label:"板/セクター：扇を整える"},
+  ];
+  ui.useProgram.checked = true;
+  renderStageTable();
+  updateUI();
+});
+
+ui.btnNakayaTour.addEventListener('click', ()=>{
+  // 温度帯を順番に巡る（劇的変化の体験用）
+  stages = [
+    {steps: 350, tC:-2,  sup:60, label:"帯：柱/針寄り（暖かめ）"},
+    {steps: 350, tC:-5,  sup:70, label:"帯：柱/針（−5付近）"},
+    {steps: 350, tC:-10, sup:55, label:"帯：板/セクター（−10付近）"},
+    {steps: 350, tC:-15, sup:90, label:"帯：樹枝状（−15付近）"},
+    {steps: 350, tC:-20, sup:70, label:"帯：柱/針（−20付近）"},
+    {steps: 350, tC:-30, sup:60, label:"帯：板（−30付近）"},
+  ];
+  ui.useProgram.checked = true;
+  renderStageTable();
+  updateUI();
+});
+
+// 中谷プリセット（手動用）
+document.querySelectorAll('[data-nakaya]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    ui.temp.value = btn.getAttribute('data-preset');
-    // プリセットに合わせて過飽和度も少し寄せる（見えやすさ）
-    const t = Number(ui.temp.value);
-    if(t === -15) ui.sup.value = 90;
-    if(t === -5)  ui.sup.value = 55;
-    if(t === -30) ui.sup.value = 75;
+    const kind = btn.getAttribute('data-nakaya');
+    ui.useProgram.checked = false;
+    if(kind==="plate"){ ui.temp.value = "-10"; ui.sup.value="55"; }
+    if(kind==="column"){ ui.temp.value = "-5";  ui.sup.value="70"; }
+    if(kind==="dendrite"){ ui.temp.value = "-15"; ui.sup.value="90"; }
     updateUI();
   });
 });
 
-// 初期化（-15樹枝状が出やすい設定）
+// 初期化
+renderStageTable();
 reset();
 updateUI();
 </script>
